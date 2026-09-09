@@ -188,10 +188,19 @@ with st.sidebar:
 
     all_years = sorted(data["year"].unique().tolist()) if not data.empty else [2025, 2026]
 
-    st.markdown("<p>Channels</p>", unsafe_allow_html=True)
-    sel_channels = st.multiselect(
-        "Channels", TAB_NAMES, default=TAB_NAMES, label_visibility="collapsed"
+    st.markdown("<p>View</p>", unsafe_allow_html=True)
+    view_mode = st.radio(
+        "View", ["Combined (All)", "By Channel"], index=0,
+        label_visibility="collapsed", horizontal=True, key="view_mode"
     )
+
+    if view_mode == "By Channel":
+        st.markdown("<p>Channels</p>", unsafe_allow_html=True)
+        sel_channels = st.multiselect(
+            "Channels", TAB_NAMES, default=TAB_NAMES, label_visibility="collapsed"
+        )
+    else:
+        sel_channels = TAB_NAMES
 
     regions = ["All"] + sorted(data["Region_Clean"].dropna().unique().tolist())
     st.markdown("<p>Region</p>", unsafe_allow_html=True)
@@ -285,21 +294,34 @@ for i, (m, lbl) in enumerate(zip(metric_opts, metric_labels)):
 metric = st.session_state.trend_metric
 metric_label = metric_labels[metric_opts.index(metric)]
 
-agg = df.groupby(["channel", "Period"]).agg({metric: "sum"}).reset_index().sort_values("Period")
-
 fig = go.Figure()
-for channel in sel_channels:
-    cdf = agg[agg["channel"] == channel]
-    if cdf.empty:
-        continue
+
+if view_mode == "Combined (All)":
+    combined = df.groupby("Period").agg({metric: "sum"}).reset_index().sort_values("Period")
     fig.add_trace(go.Scatter(
-        x=cdf["Period"], y=cdf[metric],
+        x=combined["Period"], y=combined[metric],
         mode="lines+markers",
-        name=channel,
-        line=dict(color=CHANNEL_COLORS.get(channel, "#888"), width=2),
+        name="All Channels",
+        line=dict(color=ACCENT, width=2),
         marker=dict(size=5),
-        hovertemplate=f"<b>{channel}</b><br>%{{x|%b %Y}}<br>{metric_label}: %{{y:,.0f}}<extra></extra>"
+        fill="tozeroy",
+        fillcolor="rgba(139,92,246,0.08)",
+        hovertemplate=f"<b>All Channels</b><br>%{{x|%b %Y}}<br>{metric_label}: %{{y:,.0f}}<extra></extra>"
     ))
+else:
+    agg = df.groupby(["channel", "Period"]).agg({metric: "sum"}).reset_index().sort_values("Period")
+    for channel in sel_channels:
+        cdf = agg[agg["channel"] == channel]
+        if cdf.empty:
+            continue
+        fig.add_trace(go.Scatter(
+            x=cdf["Period"], y=cdf[metric],
+            mode="lines+markers",
+            name=channel,
+            line=dict(color=CHANNEL_COLORS.get(channel, "#888"), width=2),
+            marker=dict(size=5),
+            hovertemplate=f"<b>{channel}</b><br>%{{x|%b %Y}}<br>{metric_label}: %{{y:,.0f}}<extra></extra>"
+        ))
 
 fig.update_layout(
     height=380,
