@@ -206,9 +206,11 @@ with st.sidebar:
     else:
         sel_channels = TAB_NAMES
 
-    regions = ["All"] + sorted(data["Region_Clean"].dropna().unique().tolist())
+    regions = sorted(data["Region_Clean"].dropna().unique().tolist())
     st.markdown("<p>Region</p>", unsafe_allow_html=True)
-    sel_region = st.selectbox("Region", regions, label_visibility="collapsed")
+    sel_regions = st.multiselect(
+        "Region", ["All"] + regions, default=["All"], label_visibility="collapsed"
+    )
 
     st.markdown("<p>From</p>", unsafe_allow_html=True)
     fc1, fc2 = st.columns(2)
@@ -236,8 +238,8 @@ with st.sidebar:
 df = data.copy()
 if sel_channels:
     df = df[df["channel"].isin(sel_channels)]
-if sel_region != "All":
-    df = df[df["Region_Clean"] == sel_region]
+if sel_regions and "All" not in sel_regions:
+    df = df[df["Region_Clean"].isin(sel_regions)]
 
 df = df[
     ((df["year"] > from_year) | ((df["year"] == from_year) & (df["month_num"] >= from_m))) &
