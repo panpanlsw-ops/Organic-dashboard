@@ -41,6 +41,10 @@ header[data-testid="stHeader"] {{ display:none!important }}
 [data-testid="stSidebar"] [data-baseweb="select"] div {{ color: white !important; }}
 [data-testid="stSidebar"] input {{ background: #1e1e1e !important; color: white !important; }}
 [data-testid="stSidebar"] hr {{ border-color: #333 !important; }}
+[data-testid="stSidebar"] .stRadio label p,
+[data-testid="stSidebar"] .stRadio label span,
+[data-testid="stSidebar"] .stRadio div {{ color: #dddddd !important; font-size: 0.8rem !important; }}
+[data-testid="stSidebar"] .stRadio input[type="radio"] {{ accent-color: {ACCENT} !important; }}
 
 [data-testid="stSidebar"] .stButton > button {{
     background: transparent !important;
@@ -153,7 +157,7 @@ def load_data():
                 errors="coerce"
             ).fillna(0)
 
-    all_df["month_num"] = all_df["month"].map(MONTH_NUM).fillna(0).astype(int)
+    all_df["month_num"] = all_df["month"].astype(str).str.strip().str.title().map(MONTH_NUM).fillna(0).astype(int)
     all_df["year"] = all_df["year"].astype(int)
     all_df["Period"] = pd.to_datetime(
         all_df.apply(lambda r: f"{int(r['year'])}-{int(r['month_num']):02d}-01"
