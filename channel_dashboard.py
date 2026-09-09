@@ -107,7 +107,7 @@ def sb_c():
 # ════════════════════════════════════════════════════════════
 # DATA LOADING
 # ════════════════════════════════════════════════════════════
-SHEET_ID = "PUT_YOUR_SHEET_ID_HERE"   # <-- paste the ID from your sheet's URL (between /d/ and /edit)
+SHEET_ID = "1QqSKMHNExUGUTEfLojQ5mQOSktcFk-OpoqIhln5lyMc"
 TAB_NAMES = ["Direct", "Organic", "Google Brand", "Bing Brand"]
 
 @st.cache_data(ttl=1800)
