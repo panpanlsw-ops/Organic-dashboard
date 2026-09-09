@@ -337,6 +337,7 @@ fig.update_layout(
     yaxis=dict(showgrid=True, gridcolor="#f3f4f6", title=metric_label),
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     hovermode="x unified",
+    uirevision=f"{view_mode}-{'-'.join(sorted(sel_channels))}",
 )
 st.plotly_chart(fig, use_container_width=True)
 st.markdown(sb_c(), unsafe_allow_html=True)
