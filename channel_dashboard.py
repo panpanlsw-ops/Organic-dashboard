@@ -212,6 +212,11 @@ BUDGET_TABS = {
         ("August", 8, 10, 11),
         ("September", 9, 16, 17),
     ],
+    "Radio - TV Q4 Plan": [
+        ("October", 10, 4, 5),
+        ("November", 11, 10, 11),
+        ("December", 12, 16, 17),
+    ],
 }
 
 def _parse_money(v):
