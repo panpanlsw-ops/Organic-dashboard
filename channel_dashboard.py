@@ -172,6 +172,117 @@ except Exception as e:
     st.stop()
 
 # ════════════════════════════════════════════════════════════
+# BUDGET DATA (TV/Radio spend by region, from the quarterly plan tabs)
+# ════════════════════════════════════════════════════════════
+# Maps a market row LABEL in the budget tabs -> the Region_Clean value(s) it feeds into.
+# "Arizona" combines two budget rows (Phoenix + Tucson) since your leads data doesn't
+# split those two cities separately. Sirius (satellite radio, national) and the tiny
+# Bullhead City / Bakersfield / Monterey-Salinas rows are intentionally excluded, since
+# they aren't tied to one specific leads region. NOTE: "Austin" has no row at all in the
+# budget tabs, meaning there's currently no TV/Radio spend tracked for that market —
+# any Austin trend can't be explained by TV/Radio spend with this data.
+BUDGET_REGION_MAP = {
+    "TOTAL LOS ANGELES": "Los Angeles",
+    "TOTAL BAY AREA": "Bay Area",
+    "TOTAL SACRAMENTO": "Sacramento",
+    "TOTAL PHOENIX": "Arizona",
+    "TUCSON": "Arizona",
+    "TOTAL LAS VEGAS": "Las Vegas",
+    "FRESNO": "Fresno",
+    "SAN DIEGO": "San Diego",
+}
+
+# column layout is hardcoded per quarter tab, since each one has a different number of
+# sub-columns per month (Q1 has REC/Budget/Final-Spend columns; Q2's April block is
+# shorter than May/June; Q3 is uniform). Columns are 1-indexed, matching spreadsheet
+# column letters. Each entry is (month_name, month_num, col_2025, col_2026).
+BUDGET_TABS = {
+    "Radio-TV Q1 Plan": [
+        ("January", 1, 4, 7),     # Jan 2026 uses FINAL SPEND (col 7) — a confirmed actual
+        ("February", 2, 12, 13),  # Feb/Mar 2026 have no Final Spend yet in this tab —
+        ("March", 3, 20, 21),     # using the planned "2026" column as the best available number
+    ],
+    "Radio -TV Q2 Plan": [
+        ("April", 4, 2, 3),
+        ("May", 5, 8, 9),
+        ("June", 6, 14, 15),
+    ],
+    "Radio - TV Q3 Plan": [
+        ("July", 7, 4, 5),
+        ("August", 8, 10, 11),
+        ("September", 9, 16, 17),
+    ],
+}
+
+def _parse_money(v):
+    if v is None:
+        return 0.0
+    s = str(v).replace("$", "").replace(",", "").replace("(", "-").replace(")", "").strip()
+    if s in ("", "-", "—"):
+        return 0.0
+    try:
+        return float(s)
+    except ValueError:
+        return 0.0
+
+@st.cache_data(ttl=1800)
+def load_budget_data():
+    import gspread
+    from google.oauth2.service_account import Credentials
+
+    try:
+        creds = Credentials.from_service_account_info(
+            st.secrets["gcp_service_account"],
+            scopes=["https://www.googleapis.com/auth/spreadsheets.readonly",
+                    "https://www.googleapis.com/auth/drive.readonly"]
+        )
+    except Exception:
+        creds = Credentials.from_service_account_file(
+            "lsw-marketing-b9a13bd21034.json",
+            scopes=["https://www.googleapis.com/auth/spreadsheets.readonly",
+                    "https://www.googleapis.com/auth/drive.readonly"]
+        )
+    gc = gspread.authorize(creds)
+    sh_ = gc.open_by_key(SHEET_ID)
+
+    rows = []
+    for tab_name, month_cols in BUDGET_TABS.items():
+        try:
+            grid = sh_.worksheet(tab_name).get_all_values()
+        except gspread.exceptions.WorksheetNotFound:
+            continue
+
+        for r in grid:
+            if not r:
+                continue
+            label = str(r[0]).strip().upper()
+            region = BUDGET_REGION_MAP.get(label)
+            if not region:
+                continue
+            for month_name, month_num, col_2025, col_2026 in month_cols:
+                v2025 = _parse_money(r[col_2025 - 1]) if len(r) >= col_2025 else 0.0
+                v2026 = _parse_money(r[col_2026 - 1]) if len(r) >= col_2026 else 0.0
+                rows.append({"Region_Clean": region, "year": 2025, "month_num": month_num, "spend": v2025})
+                rows.append({"Region_Clean": region, "year": 2026, "month_num": month_num, "spend": v2026})
+
+    if not rows:
+        return pd.DataFrame(columns=["Region_Clean", "year", "month_num", "spend", "Period"])
+
+    budget_df = pd.DataFrame(rows).groupby(
+        ["Region_Clean", "year", "month_num"], as_index=False
+    )["spend"].sum()
+    budget_df["Period"] = pd.to_datetime(
+        budget_df["year"].astype(str) + "-" + budget_df["month_num"].astype(str).str.zfill(2) + "-01"
+    )
+    return budget_df
+
+try:
+    budget_data = load_budget_data()
+except Exception as e:
+    budget_data = pd.DataFrame(columns=["Region_Clean", "year", "month_num", "spend", "Period"])
+    st.warning(f"⚠️ Could not load TV/Radio budget data: {e}")
+
+# ════════════════════════════════════════════════════════════
 # SIDEBAR
 # ════════════════════════════════════════════════════════════
 with st.sidebar:
@@ -246,6 +357,18 @@ df = df[
     ((df["year"] < to_year) | ((df["year"] == to_year) & (df["month_num"] <= to_m)))
 ]
 
+# Budget data filtered the same way (region + date range) so the overlay always matches
+# whatever's currently shown in the leads chart. Regions with no budget rows (e.g. Austin)
+# simply contribute $0 rather than breaking the filter.
+budget_df = budget_data.copy()
+if sel_regions and "All" not in sel_regions:
+    budget_df = budget_df[budget_df["Region_Clean"].isin(sel_regions)]
+budget_df = budget_df[
+    ((budget_df["year"] > from_year) | ((budget_df["year"] == from_year) & (budget_df["month_num"] >= from_m))) &
+    ((budget_df["year"] < to_year) | ((budget_df["year"] == to_year) & (budget_df["month_num"] <= to_m)))
+]
+budget_trend = budget_df.groupby("Period", as_index=False)["spend"].sum().sort_values("Period")
+
 # ════════════════════════════════════════════════════════════
 # TOP BAR
 # ════════════════════════════════════════════════════════════
@@ -300,6 +423,8 @@ for i, (m, lbl) in enumerate(zip(metric_opts, metric_labels)):
 metric = st.session_state.trend_metric
 metric_label = metric_labels[metric_opts.index(metric)]
 
+show_spend = st.checkbox("📻 Overlay TV/Radio spend", value=False)
+
 fig = go.Figure()
 
 if view_mode == "Combined (All)":
@@ -339,6 +464,22 @@ fig.update_layout(
     hovermode="x unified",
     uirevision=f"{view_mode}-{'-'.join(sorted(sel_channels))}",
 )
+
+if show_spend and not budget_trend.empty:
+    fig.add_trace(go.Bar(
+        x=budget_trend["Period"], y=budget_trend["spend"],
+        name="TV/Radio Spend",
+        marker=dict(color="rgba(120,120,120,0.35)"),
+        yaxis="y2",
+        hovertemplate="<b>TV/Radio Spend</b><br>%{x|%b %Y}<br>$%{y:,.0f}<extra></extra>",
+    ))
+    fig.update_layout(
+        yaxis2=dict(title="TV/Radio Spend ($)", overlaying="y", side="right", showgrid=False),
+        barmode="overlay",
+    )
+elif show_spend and budget_trend.empty:
+    st.caption("No TV/Radio budget data found for the currently selected region(s)/date range — this can happen for regions like Austin that have no tracked TV/Radio spend.")
+
 st.plotly_chart(fig, use_container_width=True)
 st.markdown(sb_c(), unsafe_allow_html=True)
 
